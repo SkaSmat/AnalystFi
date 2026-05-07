@@ -1,37 +1,47 @@
 # AnalystFi — Mon CGP personnel
 
-Assistant patrimonial personnel basé sur Claude. MVP mono-utilisateur.
+Assistant patrimonial personnel basé sur Claude + Supabase. MVP mono-utilisateur.
 
-## Semaine 1 — Socle
+## Architecture (S2)
 
-- `data/patrimoine.csv` : tes positions (à remplir)
-- `data/objectifs.md` : tes objectifs patrimoniaux (à remplir)
-- `data/profil_fiscal.md` : foyer fiscal, TMI, parts (à remplir)
-- `app.py` : chat Streamlit branché sur Claude
-- `tools.py` : tools exposés à l'agent
+- **Streamlit Cloud** : interface chat
+- **Claude (Anthropic)** : agent + tool use
+- **Supabase Postgres** : mémoire persistante (patrimoine, objectifs, profil fiscal, mémo)
 
-## Setup local
+## Setup Supabase (une fois)
 
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export ANTHROPIC_API_KEY=sk-ant-...
-streamlit run app.py
+1. Créer un projet sur https://supabase.com (region Frankfurt)
+2. SQL Editor → coller `db/schema.sql` → Run
+3. Project Settings → API : récupérer `URL` et `service_role key`
+
+## Setup Streamlit Cloud
+
+Settings → Secrets :
+```toml
+ANTHROPIC_API_KEY = "sk-ant-..."
+APP_PASSWORD = "un-mot-de-passe-fort"
+SUPABASE_URL = "https://xxxx.supabase.co"
+SUPABASE_KEY = "eyJ..."  # service_role
 ```
 
-## Déploiement Streamlit Cloud
+## Migration des données CSV existantes (optionnel, une fois)
 
-1. https://share.streamlit.io → Sign in with GitHub
-2. New app → repo `skasmat/analystfi` → branche `claude/asset-manager-design-jrRUh` → main file `app.py`
-3. Advanced settings → Secrets :
-   ```toml
-   ANTHROPIC_API_KEY = "sk-ant-..."
-   ```
-4. Deploy.
+```bash
+export SUPABASE_URL=...
+export SUPABASE_KEY=...
+python migrate.py
+```
+
+## Tools disposés par l'agent
+
+- `lire_patrimoine`, `ajouter_position`, `modifier_position`, `supprimer_position`
+- `lire_objectifs`, `ecrire_objectifs`
+- `lire_profil_fiscal`, `ecrire_profil_fiscal`
+- `ajouter_memo`, `lire_memos`
 
 ## Roadmap
 
-- S1 : socle conversationnel + lecture patrimoine (ici)
-- S2 : OpenFisca en tool use (calculs fiscaux exacts)
-- S3 : RAG BOFiP + Légifrance daté
-- S4 : mémoire long terme SQLite
+- [x] S1 : socle Streamlit + tools lecture (CSV)
+- [x] S2 : Supabase + tools écriture + mode interview
+- [ ] S3 : OpenFisca branché pour calculs fiscaux exacts
+- [ ] S4 : RAG BOFiP + Légifrance daté
