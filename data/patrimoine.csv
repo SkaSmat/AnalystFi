@@ -1,0 +1,11 @@
+categorie,enveloppe,etablissement,libelle,montant_eur,date_ouverture,support,frais_annuels_pct,notes
+liquidites,livret_a,Banque Exemple,Livret A,15000,2018-03-01,fonds_euros,0,Plafond 22950
+liquidites,ldds,Banque Exemple,LDDS,8000,2019-01-15,fonds_euros,0,
+liquidites,compte_courant,Banque Exemple,CCP,3500,2015-06-01,liquide,0,
+epargne_lt,assurance_vie,Assureur Exemple,AV multisupport,42000,2020-09-12,mixte_60UC_40FE,0.85,Versements 18k cumulés
+epargne_lt,per,Assureur Exemple,PER individuel,12000,2023-01-10,UC_dynamique,0.95,Versements déductibles
+marches,pea,Courtier Exemple,PEA,28000,2021-04-20,actions_ETF,0.5,Plafond 150k
+marches,cto,Courtier Exemple,CTO,6500,2022-11-05,actions_US,0.5,
+immobilier,residence_principale,,Appartement RP,310000,2022-06-30,bien_physique,0,Valeur estimée
+immobilier,scpi,Plateforme Exemple,SCPI rendement,15000,2023-03-15,parts_SCPI,10,Frais entrée 10%
+credits,pret_immo,Banque Exemple,Crédit RP,-185000,2022-06-30,amortissable,1.45,CRD au 01/01/2026 — 18 ans restants
