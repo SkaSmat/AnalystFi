@@ -1,9 +1,9 @@
 categorie,enveloppe,etablissement,libelle,montant_eur,date_ouverture,support,frais_annuels_pct,notes
-liquidites,livret_a,CCF,Livret A,15000,2026-05-06,fonds_euros,0,Plafond 22950
-liquidites,compte_courant,CCF,400,2026-05-06,liquide,0
-marches,pea,BD 11900,2026-05-06,actions_ETF,0.5,Plafond 150k
-marches,actions,BG 30000,2026-05-06,BG
-marches,actions,EF 41000,2026-05-06,EF
-marches,CR,30000,2026-05-06,CR
-immobilier,residence_principale,,Appartement RP,296923,2024-11-12,bien_physique,0,Valeur estimée 350000
-credits,pret_immo,CCF,Crédit RP,285162,2022-06-30,amortissable,1.45,CRD au 06/05/2026 — 23 ans restants
+liquidites,livret_a,CCF,Livret A,15000,2020-01-01,fonds_euros,0,Plafond 22950
+liquidites,compte_courant,CCF,Compte courant,400,2020-01-01,liquide,0,
+marches,pea,Bourse Direct,PEA,11900,2020-01-01,actions_ETF,0.5,Plafond 150k — antériorité 5 ans OK
+marches,pee,BG,Actionnariat salarial BG,30000,2022-01-01,actions_employeur,0,Bloqué 5 ans — exonéré IR sortie
+marches,pee,EF,Actionnariat salarial EF,41000,2022-01-01,actions_employeur,0,Bloqué 5 ans — exonéré IR sortie
+marches,autre,CR,Crypto CR,30000,2022-01-01,a_preciser,0,
+immobilier,residence_principale,,Appartement RP,350000,2024-11-12,bien_physique,0,340000
+credits,pret_immo,CCF,Crédit RP,-285162,2022-06-30,amortissable,1.45,CRD au 06/05/2026 — 23 ans restants
