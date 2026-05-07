@@ -21,8 +21,18 @@ Règles non négociables :
 """
 
 
+def get_secret(name: str) -> str:
+    val = os.getenv(name)
+    if val:
+        return val
+    try:
+        return st.secrets.get(name, "")
+    except (FileNotFoundError, KeyError, Exception):
+        return ""
+
+
 def check_password() -> bool:
-    expected = os.getenv("APP_PASSWORD") or st.secrets.get("APP_PASSWORD", "")
+    expected = get_secret("APP_PASSWORD")
     if not expected:
         return True
     if st.session_state.get("auth_ok"):
@@ -76,12 +86,15 @@ st.title("💼 AnalystFi — ton CGP personnel")
 if not check_password():
     st.stop()
 
-if not (os.getenv("ANTHROPIC_API_KEY") or st.secrets.get("ANTHROPIC_API_KEY", "")):
-    st.error("Définis ANTHROPIC_API_KEY dans les secrets Streamlit ou un .env.")
+api_key = get_secret("ANTHROPIC_API_KEY")
+if not api_key:
+    st.error(
+        "❌ ANTHROPIC_API_KEY manquante.\n\n"
+        "Va dans Streamlit Cloud → ton app → Settings → Secrets et ajoute :\n\n"
+        "```toml\nANTHROPIC_API_KEY = \"sk-ant-...\"\n```"
+    )
     st.stop()
-
-if os.getenv("ANTHROPIC_API_KEY") is None:
-    os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+os.environ["ANTHROPIC_API_KEY"] = api_key
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
