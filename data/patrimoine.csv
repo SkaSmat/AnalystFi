@@ -5,5 +5,5 @@ marches,pea,Bourse Direct,PEA,11900,2020-01-01,actions_ETF,0.5,Plafond 150k — 
 marches,pee,BG,Actionnariat salarial BG,30000,2022-01-01,actions_employeur,0,Bloqué 5 ans — exonéré IR sortie
 marches,pee,EF,Actionnariat salarial EF,41000,2022-01-01,actions_employeur,0,Bloqué 5 ans — exonéré IR sortie
 marches,autre,CR,Crypto CR,30000,2022-01-01,crypto,0,
-immobilier,residence_principale,,Appartement RP,350000,2024-11-12,bien_physique,0,340000
+immobilier,residence_principale,CCF,Appartement RP,350000,2024-11-12,bien_physique,0,340000
 credits,pret_immo,CCF,Crédit RP,-285162,2022-06-30,amortissable,1.45,CRD au 06/05/2026 — 23 ans restants
