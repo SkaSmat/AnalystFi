@@ -1,79 +1,73 @@
-# AnalystFi — système d'aide à la décision patrimoniale (local-first)
+# AnalystFi — analyseur patrimonial
 
-Outil **personnel, mono-utilisateur, 100 % local**. Il consolide ton patrimoine,
-analyse l'allocation et le risque selon les normes utilisées par les fonds/gérants,
-et servira plus tard à simuler (FIRE, fiscalité) et à conseiller.
+Outil personnel qui agit comme un gestionnaire de patrimoine : tu **poses tes
+chiffres** (ceux que tu tiens dans ton Excel), il te rend **la lecture complète** —
+patrimoine net, allocation, concentration, **risque** (volatilité, MCTR, stress
+tests), **projection FIRE** (Monte Carlo) et **idées d'investissement**.
 
 > Ce n'est pas un conseil en gestion de patrimoine réglementé. C'est un système
-> qui rend visibles les risques que l'intuition sous-estime, et de quoi challenger
-> un CGP.
+> qui rend visibles les risques que l'intuition sous-estime.
 
-## Pourquoi local-first
+## Principe : analyseur, pas coffre-fort
 
-Pas de serveur, pas de compte hébergé, **rien à réveiller**, coût **0 €**.
-Tes données vivent dans un seul fichier SQLite (`patrimoine.db`) à côté du code.
-Sauvegarde = copie du fichier (Dropbox/iCloud) ou commit dans un repo **privé**.
-Les prix sont récupérés **à la demande** (un bouton), depuis des sources gratuites
-et sans clé (Yahoo / Stooq / CoinGecko + taux BCE via Frankfurter).
-
-## Principe d'architecture
-
-1. **Journal de transactions, jamais photo de soldes** — seule base permettant de
-   calculer un jour PRU, TRI, plus-value latente.
-2. **Le moteur est déterministe** (Python). **Le LLM ne calculera jamais : il
-   interprètera** le dict de métriques + alertes. Sinon → hallucinations sur ton
-   propre patrimoine.
+**Rien n'est stocké.** Ton Excel reste ta source de vérité. Tu ouvres l'outil, tu
+poses/actualises tes lignes dans un tableau (tu ajoutes autant de lignes que tu
+veux), tu cliques **Analyser** — les chiffres vivent le temps de la session puis
+s'effacent. Résultat : aucune base de données, aucun hébergement à réveiller,
+coût 0 €, données privées.
 
 ```
-Sources de prix (à la demande)
-  → SQLite : transactions + prices  (source de vérité)
-     → vues v_positions / v_allocation / v_net_worth
-        → moteur déterministe (analystfi/engine.py) : métriques + alertes
-           → [V3] couche LLM : commentaire, priorisation, contre-argument
+Tableau éditable (par catégorie d'actif)
+  → base SQLite EN MÉMOIRE (analystfi/build.py)  — reconstruite à chaque analyse
+     → moteur déterministe (engine.py) : net, allocation, concentration, frais
+     → moteur de risque (risk.py) : vol, MCTR, corrélations, stress tests
+     → projections (projections.py) : Monte Carlo FIRE, risque de séquence
+        → couche conseil (advise.py) : le LLM INTERPRÈTE, ne calcule jamais
 ```
 
-## Démarrage
+## Lancer en local
 
 ```bash
 pip install -r requirements.txt
-
-python -m analystfi.cli init            # crée patrimoine.db
-python -m analystfi.cli seed            # charge un exemple (PEA + ETF World + 2 achats)
-python -m analystfi.cli check           # vérifie : quantity=20, pru=110.20, pnl=396.00
-python -m analystfi.cli load <f.sql>    # exécute un script SQL (ex: ton import)
-python -m analystfi.cli history         # charge ~2 ans d'historique (réseau) pour le risque
-python -m analystfi.cli report          # rapport patrimoine (net, allocation, concentration)
-python -m analystfi.cli risk            # analyse de risque (vol, MCTR, corrélations, stress)
-
-streamlit run app.py                    # interface locale
+streamlit run app.py
 ```
 
-Dans l'app : bouton **« Rafraîchir les prix »** pour récupérer les cours.
+## Déployer (URL perso, gratuit, zéro install)
 
-## Modèle de données (`db/schema.sql`)
+1. Fork/dépôt sur ton GitHub (déjà le cas).
+2. [share.streamlit.io](https://share.streamlit.io) → *New app* → choisis ce dépôt,
+   branche, `app.py`.
+3. (Optionnel) *Settings → Secrets* : `ANTHROPIC_API_KEY = "sk-ant-..."` pour activer
+   la couche conseil. Tout le reste (net, risque, projection) marche sans clé.
+4. Tu obtiens une URL. Tu l'ouvres quand tu veux, tu poses tes chiffres, tu analyses.
 
-| Table | Rôle |
-|---|---|
-| `accounts` | l'enveloppe. `opened_at` = horloge fiscale 5 ans PEA / 8 ans AV. |
-| `assets` | l'instrument (ISIN, ticker, source de prix, `is_employer`). |
-| `asset_exposures` | transparisation look-through (ETF World → US 70 %, tech 25 %…). |
-| `transactions` | le journal. `signed_quantity` / `cash_flow` = colonnes **générées** (convention de signe figée par la base). |
-| `prices` / `fx_rates` | alimenté à la demande. |
-| `properties` / `liabilities` | immobilier + passif (sans lui, le net est faux). |
+L'app dort après inactivité et se réveille en quelques secondes à la visite — pas
+de base à dé-pauser puisqu'il n'y en a pas.
 
-Vues : `v_positions` (quantité + PRU + PnL latent), `v_allocation`, `v_net_worth`.
+## Ce que l'outil calcule
 
-## Ce que le moteur calcule déjà (V1)
+- **Patrimoine net** (avec ou sans résidence principale ; crédit déduit).
+- **Allocation transparisée** : classe d'actif, région, secteur, devise (un ETF
+  S&P 500 est éclaté en US / tech… ; les titres connus sont reconnus automatiquement).
+- **Concentration** : poids par ligne, top-5, HHI, alerte **titre employeur**
+  (avec le facteur aggravant capital humain), poche crypto.
+- **Risque** : volatilité annualisée, max drawdown, **MCTR** (contribution au
+  risque par poche — révèle qu'une poche crypto à 24 % du capital peut porter 80 %+
+  du risque), corrélations (dont titres employeur), **stress tests** 2008 / mars
+  2020 / 2022.
+- **Projection FIRE** : Monte Carlo (p10 / p50 / p90), probabilité de tenir X ans
+  à Y €/an, **risque de séquence** intégré.
+- **Conseil** : hiérarchisation des risques, contre-argument, idées d'invest cadrées
+  (si une clé Anthropic est fournie).
 
-- Patrimoine **net** consolidé (crédit déduit).
-- **Allocation transparisée** (classe d'actif, région, secteur, devise).
-- **Concentration** : poids par ligne, top-5, **HHI** + nombre effectif de lignes.
-- **Alerte titre employeur** (avec le facteur aggravant : capital humain corrélé à 100 %).
-- **Frais** : TER moyen pondéré + coût composé sur 15 ans.
+## Outillage CLI (optionnel, pour usage avancé / base persistante)
+
+`python -m analystfi.cli init | seed | check | load <f.sql> | history | report | risk`
 
 ## Roadmap
 
-- [x] **V1 — socle** : modèle transactionnel SQLite, prix à la demande, moteur (net worth, allocation, concentration/HHI, alerte employeur, frais), app locale.
-- [x] **V2 — risque** : volatilité annualisée, max drawdown, matrice de corrélation, **MCTR** (contribution au risque par ligne / par poche), **stress tests** de scénarios (2008 / mars 2020 / 2022). Historique via `history` → table `price_history` (séparée des valorisations).
-- [ ] **V2 (suite)** : bandes de rééquilibrage (règle 5/25), VaR/CVaR, tracking de la cible d'allocation.
-- [ ] **V3 — simulation & conseil** : Monte Carlo (risque de séquence, taux de retrait 3,25–3,5 %, Guyton-Klinger), couche fiscale (PFU/PEA/AV/PER/LMNP), ordre de retrait optimal, puis couche LLM.
+- [x] Socle transactionnel + moteur (net, allocation, concentration, frais).
+- [x] Moteur de risque (vol, MCTR, corrélations, stress tests).
+- [x] Analyseur stateless (tableau flexible) + projection FIRE Monte Carlo + couche conseil LLM.
+- [ ] Couche fiscale détaillée (ordre de retrait optimal PEA/PEE/AV/PER, PFU crypto).
+- [ ] Bandes de rééquilibrage (règle 5/25), VaR/CVaR.

@@ -27,6 +27,15 @@ def init_db(db_path: Path | str = DB_PATH) -> None:
         conn.close()
 
 
+def memory() -> sqlite3.Connection:
+    """Base en mémoire, schéma chargé. Pour l'analyseur stateless :
+    on reconstruit tout à chaque analyse, rien n'est persisté."""
+    conn = connect(":memory:")
+    conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    conn.commit()
+    return conn
+
+
 def load_seed(db_path: Path | str = DB_PATH) -> None:
     """Charge l'exemple de vérification (PEA + ETF + 2 achats)."""
     conn = connect(db_path)
