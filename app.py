@@ -13,7 +13,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from analystfi import advise, build, engine, projections, prices, risk
+from analystfi import advise, build, engine, projections, prices, risk, tax
 
 st.set_page_config(page_title="AnalystFi", page_icon="💼", layout="wide")
 st.title("💼 AnalystFi")
@@ -27,7 +27,8 @@ ENVELOPPES = ["PEA", "PEA-PME", "CTO", "PEE/PER", "PER", "Assurance-vie",
 # ---------- Saisie ----------
 st.subheader("1. Tes lignes")
 st.caption("Édite les montants, ajoute/supprime des lignes (bouton + en bas). "
-           "« Symbole » = ticker Yahoo (FGR.PA) ou id CoinGecko (bitcoin) — sert au calcul de risque.")
+           "« Symbole » = ticker Yahoo (FGR.PA) ou id CoinGecko (bitcoin) — sert au calcul de risque. "
+           "« Coût » = prix de revient de la ligne — sert à l'impôt latent (brut vs net). Vide = gain nul.")
 
 if "rows" not in st.session_state:
     st.session_state.rows = pd.DataFrame(build.default_rows())
@@ -41,6 +42,8 @@ edited = st.data_editor(
         "libelle": st.column_config.TextColumn("Libellé", required=True),
         "enveloppe": st.column_config.SelectboxColumn("Enveloppe", options=ENVELOPPES),
         "montant": st.column_config.NumberColumn("Montant (€)", format="%.2f"),
+        "cost": st.column_config.NumberColumn("Coût (€)", format="%.2f",
+                                              help="Prix de revient. Sert à l'impôt latent. Vide = gain nul."),
         "devise": st.column_config.SelectboxColumn("Devise", options=["EUR", "USD", "GBP", "CHF"]),
         "symbole": st.column_config.TextColumn("Symbole (prix)"),
         "employeur": st.column_config.CheckboxColumn("Employeur ?"),
@@ -73,6 +76,7 @@ if not go:
 rows = edited.to_dict("records")
 conn = build.build(rows)
 m = engine.compute_metrics(conn)
+t = tax.latent_tax(conn)
 
 # ---------- Patrimoine net ----------
 st.subheader("2. Patrimoine net")
@@ -85,6 +89,28 @@ c2.metric("Immo net", f"{immo_net:,.0f} €".replace(",", " "),
           help=f"Bien {nw['real_estate']:,.0f} − crédit {nw['liabilities']:,.0f}".replace(",", " "))
 c3.metric("Passif", f"− {nw['liabilities']:,.0f} €".replace(",", " "))
 c4.metric("NET" + ("" if include_rp else " (hors RP)"), f"{total:,.0f} €".replace(",", " "))
+
+# ---------- Fiscalité latente (brut vs net) ----------
+st.subheader("Fiscalité latente — brut vs net")
+st.caption("Impôt estimé si tu liquidais aujourd'hui (sur la plus-value, selon l'enveloppe). "
+           "Renseigne la colonne « Coût » pour chaque ligne afin qu'il soit exact.")
+fc1, fc2, fc3 = st.columns(3)
+fc1.metric("Brut (financier)", f"{t['brut']:,.0f} €".replace(",", " "))
+fc2.metric("Impôt latent", f"− {t['impot_latent']:,.0f} €".replace(",", " "),
+           help=f"Taux moyen {t['taux_moyen_pct']} % sur les plus-values latentes.")
+fc3.metric("Net après impôt", f"{t['net']:,.0f} €".replace(",", " "))
+gdf = pd.DataFrame(t["groups"])
+if not gdf.empty:
+    gdf = gdf[["regime", "brut", "gain_net", "taux_pct", "impot_latent", "net"]]
+    gdf.columns = ["Régime fiscal", "Brut €", "PV nette €", "Taux %", "Impôt €", "Net €"]
+    st.dataframe(gdf, use_container_width=True, hide_index=True)
+st.caption("Impôt calculé par **groupe fiscal** : le crypto est net sur tout le portefeuille "
+           "(une ligne en perte réduit le gain d'une autre) ; idem au sein d'une enveloppe. "
+           "⚠️ Estimations (règles 2026), à revalider avant toute cession.")
+with st.expander("Détail par ligne (plus-value latente)"):
+    pdf = pd.DataFrame(t["positions"])[["asset_name", "envelope", "regime", "brut", "gain_latent"]]
+    pdf.columns = ["Actif", "Enveloppe", "Régime", "Brut €", "PV latente €"]
+    st.dataframe(pdf, use_container_width=True, hide_index=True)
 
 # ---------- Alertes ----------
 if m["alerts"]:
@@ -163,6 +189,8 @@ payload = {"net_worth": m["net_worth"], "concentration": m["concentration"],
            "allocation": m["allocation"], "alerts": m["alerts"], "fees": m["fees"],
            "risk": {k: rk[k] for k in ("portfolio_vol_pct", "risk_by_class", "stress_tests")
                     if k in rk} if rk.get("available") else None,
+           "fiscalite_latente": {"brut": t["brut"], "impot_latent": t["impot_latent"],
+                                 "net": t["net"], "taux_moyen_pct": t["taux_moyen_pct"]},
            "projection": {"terminal": proj["terminal"], "fire": proj["fire"]}}
 with st.spinner("Lecture en cours…"):
     st.markdown(advise.advise(payload, api_key=api_key or None))

@@ -122,9 +122,15 @@ def build(rows: list[dict]) -> sqlite3.Connection:
                 cur.execute("insert into asset_exposures(asset_id,dimension,bucket,weight_pct) "
                             "values(?,?,?,?)", (ast_id, dim, b, w))
 
-        # snapshot : buy qty=1 @ montant + prix du jour
+        # snapshot : base de coût = coût si fourni (sinon = valeur -> gain nul),
+        # cours du jour = valeur actuelle. Gain latent = valeur - coût.
+        try:
+            cost = float(r.get("cost") or 0)
+        except (TypeError, ValueError):
+            cost = 0
+        cost = cost if cost > 0 else montant
         cur.execute("insert into transactions(account_id,asset_id,trade_date,type,quantity,unit_price) "
-                    "values(?,?,date('now'),'buy',1,?)", (acc_id, ast_id, montant))
+                    "values(?,?,date('now'),'buy',1,?)", (acc_id, ast_id, cost))
         cur.execute("insert into prices(asset_id,price_date,close,currency) "
                     "values(?,date('now'),?,?)", (ast_id, montant, devise))
 
@@ -136,27 +142,27 @@ def default_rows() -> list[dict]:
     """Lignes de départ (éditables/extensibles) pour amorcer le tableau."""
     return [
         {"categorie": "Actions", "libelle": "Eiffage", "enveloppe": "PEE/PER", "montant": 36236,
-         "devise": "EUR", "symbole": "FGR.PA", "employeur": True},
+         "cost": 0, "devise": "EUR", "symbole": "FGR.PA", "employeur": True},
         {"categorie": "Actions", "libelle": "Bouygues", "enveloppe": "PEE/PER", "montant": 28600,
-         "devise": "EUR", "symbole": "EN.PA", "employeur": True},
+         "cost": 0, "devise": "EUR", "symbole": "EN.PA", "employeur": True},
         {"categorie": "ETF", "libelle": "Amundi PEA S&P 500 (PE500)", "enveloppe": "PEA", "montant": 12667,
-         "devise": "EUR", "symbole": "PE500.PA", "employeur": False},
+         "cost": 0, "devise": "EUR", "symbole": "PE500.PA", "employeur": False},
         {"categorie": "Crypto", "libelle": "Bitcoin", "enveloppe": "Wallet crypto", "montant": 13853,
-         "devise": "USD", "symbole": "bitcoin", "employeur": False},
+         "cost": 16588, "devise": "USD", "symbole": "bitcoin", "employeur": False},
         {"categorie": "Crypto", "libelle": "Ethereum", "enveloppe": "Wallet crypto", "montant": 3201,
-         "devise": "USD", "symbole": "ethereum", "employeur": False},
+         "cost": 1225, "devise": "USD", "symbole": "ethereum", "employeur": False},
         {"categorie": "Crypto", "libelle": "Solana", "enveloppe": "Wallet crypto", "montant": 14442,
-         "devise": "USD", "symbole": "solana", "employeur": False},
+         "cost": 6170, "devise": "USD", "symbole": "solana", "employeur": False},
         {"categorie": "Crypto", "libelle": "Celestia (TIA)", "enveloppe": "Wallet crypto", "montant": 2228,
-         "devise": "USD", "symbole": "celestia", "employeur": False},
+         "cost": 11208, "devise": "USD", "symbole": "celestia", "employeur": False},
         {"categorie": "Crypto", "libelle": "NEAR", "enveloppe": "Wallet crypto", "montant": 885,
-         "devise": "USD", "symbole": "near", "employeur": False},
+         "cost": 991, "devise": "USD", "symbole": "near", "employeur": False},
         {"categorie": "Crypto", "libelle": "Ouinex", "enveloppe": "Wallet crypto", "montant": 1304,
-         "devise": "USD", "symbole": "", "employeur": False},
+         "cost": 1304, "devise": "USD", "symbole": "", "employeur": False},
         {"categorie": "Liquidités", "libelle": "Livret A", "enveloppe": "Livret", "montant": 28767.47,
-         "devise": "EUR", "symbole": "", "employeur": False},
+         "cost": 0, "devise": "EUR", "symbole": "", "employeur": False},
         {"categorie": "Immobilier", "libelle": "Résidence principale", "enveloppe": "Immo", "montant": 350000,
-         "devise": "EUR", "symbole": "", "employeur": False},
+         "cost": 0, "devise": "EUR", "symbole": "", "employeur": False},
         {"categorie": "Crédit (passif)", "libelle": "Crédit RP", "enveloppe": "Immo", "montant": 283144.18,
-         "devise": "EUR", "symbole": "", "employeur": False, "taux": 3.30},
+         "cost": 0, "devise": "EUR", "symbole": "", "employeur": False, "taux": 3.30},
     ]
