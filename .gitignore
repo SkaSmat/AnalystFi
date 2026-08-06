@@ -1,6 +1,10 @@
+# Base de données personnelle — ne jamais committer par accident.
+patrimoine.db
+patrimoine.db-journal
+*.sqlite3
+
+.venv/
+__pycache__/
+*.pyc
 .env
-.env.local
-node_modules/
-dist/
 .DS_Store
-supabase/.temp/

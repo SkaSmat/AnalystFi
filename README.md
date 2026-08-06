@@ -1,63 +1,75 @@
-# AnalystFi — système d'aide à la décision patrimoniale
+# AnalystFi — système d'aide à la décision patrimoniale (local-first)
 
-Outil personnel mono-utilisateur qui agit comme un gestionnaire de patrimoine :
-il consolide le patrimoine, analyse l'allocation et le risque selon les normes
-utilisées par les fonds/gérants, et servira plus tard à simuler (FIRE, fiscalité)
-et à conseiller.
+Outil **personnel, mono-utilisateur, 100 % local**. Il consolide ton patrimoine,
+analyse l'allocation et le risque selon les normes utilisées par les fonds/gérants,
+et servira plus tard à simuler (FIRE, fiscalité) et à conseiller.
 
 > Ce n'est pas un conseil en gestion de patrimoine réglementé. C'est un système
 > qui rend visibles les risques que l'intuition sous-estime, et de quoi challenger
 > un CGP.
 
+## Pourquoi local-first
+
+Pas de serveur, pas de compte hébergé, **rien à réveiller**, coût **0 €**.
+Tes données vivent dans un seul fichier SQLite (`patrimoine.db`) à côté du code.
+Sauvegarde = copie du fichier (Dropbox/iCloud) ou commit dans un repo **privé**.
+Les prix sont récupérés **à la demande** (un bouton), depuis des sources gratuites
+et sans clé (Yahoo / Stooq / CoinGecko + taux BCE via Frankfurter).
+
 ## Principe d'architecture
 
-1. **Modèle en journal de transactions, jamais en photo de soldes.** C'est la
-   seule façon de calculer un jour un TRI, un PRU, une plus-value latente.
-2. **Le moteur est déterministe** (calculs de risque en TypeScript). **Le LLM ne
-   calcule jamais : il interprète** le JSON de métriques + alertes produit par le
-   moteur. Sinon → hallucinations sur ton propre patrimoine.
-3. **Coût ≈ 0 €** : Supabase free tier + sources de prix gratuites.
+1. **Journal de transactions, jamais photo de soldes** — seule base permettant de
+   calculer un jour PRU, TRI, plus-value latente.
+2. **Le moteur est déterministe** (Python). **Le LLM ne calculera jamais : il
+   interprètera** le dict de métriques + alertes. Sinon → hallucinations sur ton
+   propre patrimoine.
 
 ```
-Sources de prix (Yahoo / CoinGecko / Stooq / BCE)
-   → Edge Function refresh-prices  (pg_cron, quotidien)
-      → Postgres : transactions + prices  (source de vérité)
-         → vues v_positions / v_allocation / v_net_worth
-            → moteur de risque déterministe (JSON de métriques + alertes)
-               → couche LLM (commentaire, priorisation, contre-argument)
+Sources de prix (à la demande)
+  → SQLite : transactions + prices  (source de vérité)
+     → vues v_positions / v_allocation / v_net_worth
+        → moteur déterministe (analystfi/engine.py) : métriques + alertes
+           → [V3] couche LLM : commentaire, priorisation, contre-argument
 ```
 
-## Schéma de données (`db/`)
+## Démarrage
+
+```bash
+pip install -r requirements.txt
+
+python -m analystfi.cli init     # crée patrimoine.db
+python -m analystfi.cli seed     # charge un exemple (PEA + ETF World + 2 achats)
+python -m analystfi.cli check    # vérifie : quantity=20, pru=110.20, pnl=396.00
+python -m analystfi.cli report   # rapport texte
+
+streamlit run app.py             # interface locale
+```
+
+Dans l'app : bouton **« Rafraîchir les prix »** pour récupérer les cours.
+
+## Modèle de données (`db/schema.sql`)
 
 | Table | Rôle |
 |---|---|
-| `accounts` | l'enveloppe (PEA, CTO, AV, PER…). `opened_at` pilote l'horloge fiscale 5 ans PEA / 8 ans AV. |
-| `assets` | l'instrument (ISIN, ticker, devise, source de prix). |
-| `asset_exposures` | transparisation (look-through) : un ETF World s'éclate en US 70 %, tech 25 %… |
-| `transactions` | le journal. `signed_quantity` et `cash_flow` sont des colonnes générées (convention de signe figée par Postgres). |
-| `prices` / `fx_rates` | historique alimenté par le cron. |
-| `properties` / `liabilities` | immobilier + passif. Sans le passif, le patrimoine net est faux. |
+| `accounts` | l'enveloppe. `opened_at` = horloge fiscale 5 ans PEA / 8 ans AV. |
+| `assets` | l'instrument (ISIN, ticker, source de prix, `is_employer`). |
+| `asset_exposures` | transparisation look-through (ETF World → US 70 %, tech 25 %…). |
+| `transactions` | le journal. `signed_quantity` / `cash_flow` = colonnes **générées** (convention de signe figée par la base). |
+| `prices` / `fx_rates` | alimenté à la demande. |
+| `properties` / `liabilities` | immobilier + passif (sans lui, le net est faux). |
 
-Vues : `v_positions` (quantité + PRU + PnL latent), `v_allocation` (allocation
-transparisée), `v_net_worth` (net consolidé, crédit déduit). RLS activé sur toutes
-les tables (`auth.uid()`).
+Vues : `v_positions` (quantité + PRU + PnL latent), `v_allocation`, `v_net_worth`.
 
-## Mise en place (ordre à respecter)
+## Ce que le moteur calcule déjà (V1)
 
-1. **Projet Supabase** (free tier, région Frankfurt).
-2. **SQL Editor → `db/schema.sql` → Run.** Doit passer d'un bloc (idempotent).
-3. **Auth → Email** activée, puis crée ton compte. Le RLS a besoin d'un `auth.uid()` réel.
-4. **Vérifie le socle** : SQL Editor → `db/seed_example.sql` → Run.
-   Attendu : `quantity=20`, `pru=110.20`, `market_value=2600.00`, `unrealized_pnl=396.00`.
-   Si le PRU est faux sur 2 transactions, il sera faux sur 200. Nettoie le seed ensuite (bas du fichier).
-5. **Prix automatiques** :
-   - `supabase functions deploy refresh-prices --no-verify-jwt`
-   - ajoute le secret `SUPABASE_SERVICE_ROLE_KEY` (Project Settings → Edge Functions → Secrets)
-   - SQL Editor → `db/cron.sql` (remplace `<PROJECT_REF>` et `<ANON_KEY>`) → Run.
+- Patrimoine **net** consolidé (crédit déduit).
+- **Allocation transparisée** (classe d'actif, région, secteur, devise).
+- **Concentration** : poids par ligne, top-5, **HHI** + nombre effectif de lignes.
+- **Alerte titre employeur** (avec le facteur aggravant : capital humain corrélé à 100 %).
+- **Frais** : TER moyen pondéré + coût composé sur 15 ans.
 
 ## Roadmap
 
-- [x] **V1 — socle** : schéma transactionnel, seed de vérification, cron de prix (Yahoo/CoinGecko/Stooq + FX BCE).
-- [ ] **V1 (suite)** : saisie des transactions, patrimoine net consolidé, allocation transparisée, concentration + HHI.
-- [ ] **V2 — risque** : matrice de corrélation, MCTR (contribution marginale au risque), stress tests historiques (2008, mars 2020, 2022), bandes de rééquilibrage (règle 5/25).
-- [ ] **V3 — simulation & conseil** : Monte Carlo (risque de séquence, taux de retrait), couche fiscale (PFU/PEA/AV/PER/LMNP), ordre de retrait optimal, puis couche LLM.
+- [x] **V1 — socle** : modèle transactionnel SQLite, prix à la demande, moteur (net worth, allocation, concentration/HHI, alerte employeur, frais), app locale.
+- [ ] **V2 — risque** : volatilité, max drawdown, corrélation, **MCTR** (contribution marginale au risque), **stress tests** historiques (2008 / mars 2020 / 2022), bandes de rééquilibrage 5/25.
+- [ ] **V3 — simulation & conseil** : Monte Carlo (risque de séquence, taux de retrait 3,25–3,5 %, Guyton-Klinger), couche fiscale (PFU/PEA/AV/PER/LMNP), ordre de retrait optimal, puis couche LLM.
