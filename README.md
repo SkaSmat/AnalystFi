@@ -37,12 +37,15 @@ Sources de prix (à la demande)
 ```bash
 pip install -r requirements.txt
 
-python -m analystfi.cli init     # crée patrimoine.db
-python -m analystfi.cli seed     # charge un exemple (PEA + ETF World + 2 achats)
-python -m analystfi.cli check    # vérifie : quantity=20, pru=110.20, pnl=396.00
-python -m analystfi.cli report   # rapport texte
+python -m analystfi.cli init            # crée patrimoine.db
+python -m analystfi.cli seed            # charge un exemple (PEA + ETF World + 2 achats)
+python -m analystfi.cli check           # vérifie : quantity=20, pru=110.20, pnl=396.00
+python -m analystfi.cli load <f.sql>    # exécute un script SQL (ex: ton import)
+python -m analystfi.cli history         # charge ~2 ans d'historique (réseau) pour le risque
+python -m analystfi.cli report          # rapport patrimoine (net, allocation, concentration)
+python -m analystfi.cli risk            # analyse de risque (vol, MCTR, corrélations, stress)
 
-streamlit run app.py             # interface locale
+streamlit run app.py                    # interface locale
 ```
 
 Dans l'app : bouton **« Rafraîchir les prix »** pour récupérer les cours.
@@ -71,5 +74,6 @@ Vues : `v_positions` (quantité + PRU + PnL latent), `v_allocation`, `v_net_wort
 ## Roadmap
 
 - [x] **V1 — socle** : modèle transactionnel SQLite, prix à la demande, moteur (net worth, allocation, concentration/HHI, alerte employeur, frais), app locale.
-- [ ] **V2 — risque** : volatilité, max drawdown, corrélation, **MCTR** (contribution marginale au risque), **stress tests** historiques (2008 / mars 2020 / 2022), bandes de rééquilibrage 5/25.
+- [x] **V2 — risque** : volatilité annualisée, max drawdown, matrice de corrélation, **MCTR** (contribution au risque par ligne / par poche), **stress tests** de scénarios (2008 / mars 2020 / 2022). Historique via `history` → table `price_history` (séparée des valorisations).
+- [ ] **V2 (suite)** : bandes de rééquilibrage (règle 5/25), VaR/CVaR, tracking de la cible d'allocation.
 - [ ] **V3 — simulation & conseil** : Monte Carlo (risque de séquence, taux de retrait 3,25–3,5 %, Guyton-Klinger), couche fiscale (PFU/PEA/AV/PER/LMNP), ordre de retrait optimal, puis couche LLM.

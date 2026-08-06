@@ -80,11 +80,61 @@ def refresh_fx(conn: sqlite3.Connection, currencies: list[str]) -> int:
     return n
 
 
+def fetch_yahoo_history(symbol: str, rng: str = "2y") -> list[tuple[str, float]]:
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}?interval=1d&range={rng}"
+    r = requests.get(url, headers=UA, timeout=TIMEOUT)
+    r.raise_for_status()
+    res = r.json()["chart"]["result"][0]
+    ts = res["timestamp"]
+    closes = res["indicators"]["quote"][0]["close"]
+    out = []
+    for t, c in zip(ts, closes):
+        if c is not None:
+            out.append((date.fromtimestamp(t).isoformat(), float(c)))
+    return out
+
+
+def fetch_coingecko_history(coin_id: str, days: int = 730) -> list[tuple[str, float]]:
+    url = (f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
+           f"?vs_currency=eur&days={days}&interval=daily")
+    r = requests.get(url, timeout=TIMEOUT)
+    r.raise_for_status()
+    out = []
+    for ms, price in r.json().get("prices", []):
+        out.append((date.fromtimestamp(ms / 1000).isoformat(), float(price)))
+    return out
+
+
+def refresh_history(conn: sqlite3.Connection) -> dict:
+    """Charge ~2 ans d'historique quotidien pour le calcul de risque."""
+    assets = conn.execute(
+        "select id, price_source, price_symbol, name from assets "
+        "where price_source in ('yahoo','coingecko') and price_symbol is not null"
+    ).fetchall()
+    results = []
+    for a in assets:
+        try:
+            if a["price_source"] == "yahoo":
+                series = fetch_yahoo_history(a["price_symbol"])
+            else:
+                series = fetch_coingecko_history(a["price_symbol"])
+            conn.executemany(
+                "insert into price_history(asset_id,price_date,close) values(?,?,?) "
+                "on conflict(asset_id,price_date) do update set close=excluded.close",
+                [(a["id"], d, c) for d, c in series],
+            )
+            results.append({"asset": a["name"], "ok": True, "points": len(series)})
+        except Exception as e:  # noqa: BLE001
+            results.append({"asset": a["name"], "ok": False, "error": str(e)})
+    conn.commit()
+    return {"loaded": sum(1 for r in results if r["ok"]), "total": len(results), "results": results}
+
+
 def refresh_prices(conn: sqlite3.Connection) -> dict:
     """Rafraîchit tous les actifs à source automatique. Renvoie un résumé."""
     assets = conn.execute(
         "select id, currency, price_source, price_symbol, name "
-        "from assets where price_source != 'manual'"
+        "from assets where price_source != 'manual' and manual_value = 0"
     ).fetchall()
 
     results, currencies = [], []

@@ -11,7 +11,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from analystfi import db, engine, prices
+from analystfi import db, engine, prices, risk
 
 st.set_page_config(page_title="AnalystFi", page_icon="💼", layout="wide")
 
@@ -34,6 +34,10 @@ with st.sidebar:
         for r in res["results"]:
             if not r["ok"]:
                 st.warning(f"{r['asset']} : {r['error']}")
+    if st.button("📈 Charger l'historique (risque)", use_container_width=True):
+        with st.spinner("Récupération de ~2 ans d'historique…"):
+            res = prices.refresh_history(conn)
+        st.success(f"{res['loaded']}/{res['total']} historiques chargés.")
     st.divider()
     npos = db.one(conn, "select count(*) n from transactions")["n"]
     if npos == 0:
@@ -104,5 +108,36 @@ fc1.metric("TER moyen pondéré", f"{f['weighted_ter_pct']} %/an",
            help="Frais courants des supports, pondérés par leur valeur.")
 fc2.metric("Coût composé 15 ans", f"{f['drag_15y_eur']:,.0f} €".replace(",", " "),
            help="Ce que les frais te coûtent, capitalisés, sur 15 ans.")
+
+# --- Risque (V2) ---
+st.divider()
+st.subheader("Risque")
+rk = risk.compute_risk(conn)
+if not rk.get("available"):
+    st.info("Clique « 📈 Charger l'historique (risque) » dans la barre latérale pour "
+            "activer volatilité, MCTR et stress tests.")
+else:
+    rc1, rc2, rc3 = st.columns(3)
+    rc1.metric("Volatilité annualisée", f"{rk['portfolio_vol_pct']} %")
+    rc2.metric("Max drawdown (alloc.)", f"{rk['max_drawdown_pct']} %")
+    rc3.metric("Couverture", f"{rk['coverage_pct']} %")
+
+    st.caption("Poids vs contribution au **risque** (une poche peut porter bien plus de risque que son poids)")
+    rdf = pd.DataFrame([
+        {"Poche": k, "Poids %": v["weight_pct"], "Risque %": v["risk_contribution_pct"]}
+        for k, v in rk["risk_by_class"].items()
+    ])
+    st.dataframe(rdf, use_container_width=True, hide_index=True)
+
+    if rk.get("employer_correlation"):
+        for a, b, c in rk["employer_correlation"]:
+            st.caption(f"Corrélation {a} ↔ {b} : **{c}**")
+
+    st.caption("Stress tests (impact sur les actifs financiers)")
+    sdf = pd.DataFrame([
+        {"Scénario": k, "Impact %": v["impact_pct"], "Impact €": v["impact_eur"], "Après €": v["after_eur"]}
+        for k, v in rk["stress_tests"].items()
+    ])
+    st.dataframe(sdf, use_container_width=True, hide_index=True)
 
 conn.close()

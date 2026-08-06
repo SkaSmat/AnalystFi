@@ -4,8 +4,10 @@
     python -m analystfi.cli seed            # charge l'exemple de vérification
     python -m analystfi.cli check           # vérifie que v_positions sort les bons chiffres
     python -m analystfi.cli load <fichier>  # exécute un script .sql (ex: ton import)
-    python -m analystfi.cli refresh         # rafraîchit les prix (réseau)
+    python -m analystfi.cli refresh         # rafraîchit les prix spot (réseau)
+    python -m analystfi.cli history         # charge ~2 ans d'historique (réseau, pour le risque)
     python -m analystfi.cli report          # affiche le rapport d'analyse
+    python -m analystfi.cli risk            # affiche l'analyse de risque (vol, MCTR, stress)
 """
 from __future__ import annotations
 
@@ -67,6 +69,17 @@ def cmd_refresh() -> None:
             print(f"  ⚠️  {r['asset']} : {r['error']}")
 
 
+def cmd_history() -> None:
+    from . import prices
+    conn = db.connect()
+    res = prices.refresh_history(conn)
+    conn.close()
+    print(f"{res['loaded']}/{res['total']} historiques chargés.")
+    for r in res["results"]:
+        tag = f"{r['points']} pts" if r["ok"] else f"⚠️  {r['error']}"
+        print(f"  {r['asset']} : {tag}")
+
+
 def cmd_report() -> None:
     conn = db.connect()
     m = engine.compute_metrics(conn)
@@ -74,9 +87,17 @@ def cmd_report() -> None:
     print(engine.format_report(m))
 
 
+def cmd_risk() -> None:
+    from . import risk
+    conn = db.connect()
+    r = risk.compute_risk(conn)
+    conn.close()
+    print(risk.format_risk(r))
+
+
 COMMANDS = {
     "init": cmd_init, "seed": cmd_seed, "check": cmd_check, "load": cmd_load,
-    "refresh": cmd_refresh, "report": cmd_report,
+    "refresh": cmd_refresh, "history": cmd_history, "report": cmd_report, "risk": cmd_risk,
 }
 
 

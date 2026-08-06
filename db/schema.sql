@@ -45,6 +45,9 @@ create table if not exists assets (
   ter_pct      real not null default 0,      -- frais courants annuels ETF/fonds
   is_cash      integer not null default 0,
   is_employer  integer not null default 0,   -- titre employeur (concentration + capital humain corrélé)
+  -- 1 = valorisé par un total saisi à la main (snapshot). Le refresh spot ne le
+  -- touche pas, mais l'historique de risque peut être chargé via price_symbol.
+  manual_value integer not null default 0,
   notes        text,
   created_at   text not null default (datetime('now')),
   unique (isin),
@@ -127,6 +130,15 @@ create table if not exists fx_rates (
   rate_date text not null,
   rate      real not null,
   primary key (base, quote, rate_date)
+);
+
+-- Historique de prix par UNITÉ (part/coin), pour le moteur de risque.
+-- Séparé de `prices` : ici on stocke le cours réel, pas la valeur snapshot.
+create table if not exists price_history (
+  asset_id   integer not null references assets(id) on delete cascade,
+  price_date text not null,
+  close      real not null,
+  primary key (asset_id, price_date)
 );
 
 -- -------------------------------------------------------------
