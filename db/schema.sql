@@ -25,6 +25,7 @@ create table if not exists accounts (
   opened_at          text not null,              -- 'YYYY-MM-DD'
   base_currency      text not null default 'EUR',
   management_fee_pct real not null default 0,    -- frais de gestion annuels (AV, PER)
+  tax_rate_pct       real,                        -- taux d'impôt latent réglé par l'utilisateur (poche)
   is_active          integer not null default 1,
   notes              text,
   created_at         text not null default (datetime('now'))

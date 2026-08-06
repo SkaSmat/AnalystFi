@@ -3,12 +3,14 @@
     pip install -r requirements.txt
     streamlit run app.py
 
-Tu poses tes chiffres (tableau éditable, tu ajoutes autant de lignes que tu veux),
-tu cliques « Analyser » → lecture complète : net, allocation, concentration,
-risque, projection FIRE, idées d'invest. Rien n'est stocké : tout vit le temps
-de la session. Ton Excel reste ta source de vérité.
+Saisie organisée en POCHES (Actions, Crypto, PEE…), chacune avec son taux
+d'impôt et sa liste de lignes. Tu cliques « Analyser » → lecture complète
+(net, allocation, concentration, risque, fiscalité brut/net, projection FIRE,
+idées d'invest). Rien n'est stocké : ton Excel reste la source de vérité.
 """
 from __future__ import annotations
+
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -17,39 +19,72 @@ from analystfi import advise, build, engine, projections, prices, risk, tax
 
 st.set_page_config(page_title="AnalystFi", page_icon="💼", layout="wide")
 st.title("💼 AnalystFi")
-st.caption("Pose tes chiffres → lecture complète. Rien n'est enregistré : ton Excel reste la source de vérité.")
+st.caption("Pose tes chiffres par poche → lecture complète. Rien n'est enregistré.")
 
-CATEGORIES = ["Actions", "ETF", "Crypto", "Obligations", "Liquidités",
-              "Immobilier", "Crédit (passif)", "Autre"]
-ENVELOPPES = ["PEA", "PEA-PME", "CTO", "PEE/PER", "PER", "Assurance-vie",
-              "Livret", "Wallet crypto", "Immo", "Autre"]
+POCHE_CLASSES = ["Actions", "ETF", "Crypto", "Obligations", "Liquidités", "Autre"]
+POCHE_ENV = ["PEA", "PEA-PME", "CTO", "PEE/PER", "PER", "Assurance-vie", "Livret", "Wallet crypto", "Autre"]
+LINE_COLS = ["libelle", "montant", "cost", "devise", "symbole", "employeur"]
+COL_CONFIG = {
+    "libelle": st.column_config.TextColumn("Libellé", required=True),
+    "montant": st.column_config.NumberColumn("Montant (€)", format="%.2f"),
+    "cost": st.column_config.NumberColumn("Coût (€)", format="%.2f",
+                                          help="Prix de revient — sert à l'impôt latent. Vide = gain nul."),
+    "devise": st.column_config.SelectboxColumn("Devise", options=["EUR", "USD", "GBP", "CHF"]),
+    "symbole": st.column_config.TextColumn("Symbole (prix)",
+                                           help="Ticker Yahoo (FGR.PA) ou id CoinGecko (bitcoin) — pour le risque."),
+    "employeur": st.column_config.CheckboxColumn("Employeur ?"),
+}
 
-# ---------- Saisie ----------
-st.subheader("1. Tes lignes")
-st.caption("Édite les montants, ajoute/supprime des lignes (bouton + en bas). "
-           "« Symbole » = ticker Yahoo (FGR.PA) ou id CoinGecko (bitcoin) — sert au calcul de risque. "
-           "« Coût » = prix de revient de la ligne — sert à l'impôt latent (brut vs net). Vide = gain nul.")
+# --- état initial ---
+if "pockets" not in st.session_state:
+    ps = build.default_pockets()
+    for p in ps:
+        p["id"] = uuid.uuid4().hex[:8]
+    st.session_state.pockets = ps
+    st.session_state.immo = build.default_immo()
 
-if "rows" not in st.session_state:
-    st.session_state.rows = pd.DataFrame(build.default_rows())
+# ---------- Saisie par poche ----------
+st.subheader("1. Tes poches")
+current_pockets = []
+for p in st.session_state.pockets:
+    with st.container(border=True):
+        h1, h2, h3 = st.columns([5, 2, 1])
+        h1.markdown(f"**{p['nom']}**  ·  _{p['classe']} / {p['enveloppe']}_")
+        taux = h2.number_input("Impôt latent %", value=float(p.get("taux") or 0), step=0.1,
+                               key=f"t_{p['id']}")
+        if h3.button("🗑", key=f"del_{p['id']}", help="Supprimer la poche"):
+            st.session_state.pockets = [x for x in st.session_state.pockets if x["id"] != p["id"]]
+            st.rerun()
+        df = pd.DataFrame(p["lignes"] or [{c: ("" if c != "employeur" else False) for c in LINE_COLS}],
+                          columns=LINE_COLS)
+        edited = st.data_editor(df, num_rows="dynamic", use_container_width=True,
+                                hide_index=True, column_config=COL_CONFIG, key=f"e_{p['id']}")
+        current_pockets.append({**p, "taux": taux, "lignes": edited.to_dict("records")})
 
-edited = st.data_editor(
-    st.session_state.rows,
-    num_rows="dynamic",
-    use_container_width=True,
-    column_config={
-        "categorie": st.column_config.SelectboxColumn("Catégorie", options=CATEGORIES, required=True),
-        "libelle": st.column_config.TextColumn("Libellé", required=True),
-        "enveloppe": st.column_config.SelectboxColumn("Enveloppe", options=ENVELOPPES),
-        "montant": st.column_config.NumberColumn("Montant (€)", format="%.2f"),
-        "cost": st.column_config.NumberColumn("Coût (€)", format="%.2f",
-                                              help="Prix de revient. Sert à l'impôt latent. Vide = gain nul."),
-        "devise": st.column_config.SelectboxColumn("Devise", options=["EUR", "USD", "GBP", "CHF"]),
-        "symbole": st.column_config.TextColumn("Symbole (prix)"),
-        "employeur": st.column_config.CheckboxColumn("Employeur ?"),
-        "taux": st.column_config.NumberColumn("Taux % (crédit)", format="%.2f"),
-    },
-)
+with st.expander("➕ Ajouter une poche"):
+    a1, a2, a3, a4 = st.columns(4)
+    new_nom = a1.text_input("Nom", key="np_nom")
+    new_cls = a2.selectbox("Classe", POCHE_CLASSES, key="np_cls")
+    new_env = a3.selectbox("Enveloppe", POCHE_ENV, key="np_env")
+    new_tx = a4.number_input("Impôt %", value=30.0, step=0.1, key="np_tx")
+    if st.button("Ajouter") and new_nom.strip():
+        st.session_state.pockets.append({
+            "id": uuid.uuid4().hex[:8], "nom": new_nom.strip(), "classe": new_cls,
+            "enveloppe": new_env, "taux": new_tx,
+            "lignes": [{c: ("" if c != "employeur" else False) for c in LINE_COLS}],
+        })
+        st.rerun()
+
+# ---------- Immobilier & passif ----------
+with st.container(border=True):
+    st.markdown("**🏠 Immobilier & passif**")
+    im = st.session_state.immo
+    i1, i2, i3 = st.columns(3)
+    rp_val = i1.number_input("Résidence principale — valeur (€)", value=float(im["rp_valeur"]), step=1000.0)
+    crd = i2.number_input("Crédit — capital restant dû (€)", value=float(im["credit_crd"]), step=1000.0)
+    taux_credit = i3.number_input("Crédit — taux %", value=float(im["credit_taux"]), step=0.05)
+immo = {"rp_nom": "Résidence principale", "rp_valeur": rp_val,
+        "credit_nom": "Crédit RP", "credit_crd": crd, "credit_taux": taux_credit}
 
 # ---------- Paramètres ----------
 with st.sidebar:
@@ -64,17 +99,13 @@ with st.sidebar:
     st.divider()
     with_risk = st.toggle("Analyse de risque (récupère l'historique en ligne)", value=True)
     st.caption("**Conseil (optionnel)**")
-    api_key = st.text_input("Clé Anthropic", type="password",
-                            help="Pour la lecture priorisée + idées d'invest. Non stockée.")
+    api_key = st.text_input("Clé Anthropic", type="password", help="Non stockée.")
 
-go = st.button("📊 Analyser", type="primary", use_container_width=True)
-
-if not go:
-    st.info("Ajuste tes lignes puis clique **Analyser**.")
+if not st.button("📊 Analyser", type="primary", use_container_width=True):
+    st.info("Ajuste tes poches puis clique **Analyser**.")
     st.stop()
 
-rows = edited.to_dict("records")
-conn = build.build(rows)
+conn = build.build_pockets(current_pockets, immo)
 m = engine.compute_metrics(conn)
 t = tax.latent_tax(conn)
 
@@ -85,15 +116,12 @@ immo_net = nw["real_estate"] - nw["liabilities"]
 total = nw["net_worth"] if include_rp else nw["financial_assets"]
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Financier", f"{nw['financial_assets']:,.0f} €".replace(",", " "))
-c2.metric("Immo net", f"{immo_net:,.0f} €".replace(",", " "),
-          help=f"Bien {nw['real_estate']:,.0f} − crédit {nw['liabilities']:,.0f}".replace(",", " "))
+c2.metric("Immo net", f"{immo_net:,.0f} €".replace(",", " "))
 c3.metric("Passif", f"− {nw['liabilities']:,.0f} €".replace(",", " "))
 c4.metric("NET" + ("" if include_rp else " (hors RP)"), f"{total:,.0f} €".replace(",", " "))
 
-# ---------- Fiscalité latente (brut vs net) ----------
+# ---------- Fiscalité latente ----------
 st.subheader("Fiscalité latente — brut vs net")
-st.caption("Impôt estimé si tu liquidais aujourd'hui (sur la plus-value, selon l'enveloppe). "
-           "Renseigne la colonne « Coût » pour chaque ligne afin qu'il soit exact.")
 fc1, fc2, fc3 = st.columns(3)
 fc1.metric("Brut (financier)", f"{t['brut']:,.0f} €".replace(",", " "))
 fc2.metric("Impôt latent", f"− {t['impot_latent']:,.0f} €".replace(",", " "),
@@ -101,16 +129,11 @@ fc2.metric("Impôt latent", f"− {t['impot_latent']:,.0f} €".replace(",", " "
 fc3.metric("Net après impôt", f"{t['net']:,.0f} €".replace(",", " "))
 gdf = pd.DataFrame(t["groups"])
 if not gdf.empty:
-    gdf = gdf[["regime", "brut", "gain_net", "taux_pct", "impot_latent", "net"]]
-    gdf.columns = ["Régime fiscal", "Brut €", "PV nette €", "Taux %", "Impôt €", "Net €"]
+    gdf = gdf[["poche", "brut", "gain_net", "taux_pct", "impot_latent", "net"]]
+    gdf.columns = ["Poche", "Brut €", "PV nette €", "Taux %", "Impôt €", "Net €"]
     st.dataframe(gdf, use_container_width=True, hide_index=True)
-st.caption("Impôt calculé par **groupe fiscal** : le crypto est net sur tout le portefeuille "
-           "(une ligne en perte réduit le gain d'une autre) ; idem au sein d'une enveloppe. "
-           "⚠️ Estimations (règles 2026), à revalider avant toute cession.")
-with st.expander("Détail par ligne (plus-value latente)"):
-    pdf = pd.DataFrame(t["positions"])[["asset_name", "envelope", "regime", "brut", "gain_latent"]]
-    pdf.columns = ["Actif", "Enveloppe", "Régime", "Brut €", "PV latente €"]
-    st.dataframe(pdf, use_container_width=True, hide_index=True)
+st.caption("Impôt par poche, sur la plus-value NETTE de la poche (une ligne en perte réduit le gain "
+           "d'une autre — c'est ce qui rend le crypto-global juste). ⚠️ Estimations, à revalider.")
 
 # ---------- Alertes ----------
 if m["alerts"]:
@@ -118,7 +141,7 @@ if m["alerts"]:
     for a in m["alerts"]:
         {"high": st.error, "medium": st.warning, "info": st.info}[a["level"]](a["message"])
 
-# ---------- Concentration & Allocation ----------
+# ---------- Allocation & concentration ----------
 st.subheader("3. Allocation & concentration")
 col1, col2 = st.columns([2, 1])
 with col1:
@@ -170,27 +193,25 @@ proj = projections.simulate(conn, {
     "years_retire": years_retire, "annual_spend": annual_spend, "n": 5000,
 })
 pa = proj["assumptions"]
-st.caption(f"Hypothèses : rendement réel {pa['mu_pct']} %/an, vol {pa['sigma_pct']} % "
-           f"(déduits de ton allocation).")
+st.caption(f"Hypothèses : rendement réel {pa['mu_pct']} %/an, vol {pa['sigma_pct']} % (déduits de ton allocation).")
 pc1, pc2, pc3 = st.columns(3)
-pc1.metric("Dans " + str(years_accum) + " ans — pessimiste (p10)", f"{proj['terminal']['p10']:,.0f} €".replace(",", " "))
+pc1.metric(f"Dans {years_accum} ans — p10", f"{proj['terminal']['p10']:,.0f} €".replace(",", " "))
 pc2.metric("médian (p50)", f"{proj['terminal']['p50']:,.0f} €".replace(",", " "))
 pc3.metric("favorable (p90)", f"{proj['terminal']['p90']:,.0f} €".replace(",", " "))
 if proj["fire"]:
-    sr = proj["fire"]["success_rate_pct"]
     st.metric(f"Probabilité de tenir {years_retire} ans à {annual_spend:,.0f} €/an".replace(",", " "),
-              f"{sr:.0f} %", help="Intègre le risque de séquence (rendements tirés année par année).")
-chart = pd.DataFrame({"p10": proj["p10_path"], "médian": proj["median_path"], "p90": proj["p90_path"]})
-st.line_chart(chart)
+              f"{proj['fire']['success_rate_pct']:.0f} %",
+              help="Intègre le risque de séquence.")
+st.line_chart(pd.DataFrame({"p10": proj["p10_path"], "médian": proj["median_path"], "p90": proj["p90_path"]}))
 
 # ---------- Conseil ----------
 st.subheader("6. Lecture & idées d'invest")
 payload = {"net_worth": m["net_worth"], "concentration": m["concentration"],
            "allocation": m["allocation"], "alerts": m["alerts"], "fees": m["fees"],
+           "fiscalite_latente": {"brut": t["brut"], "impot_latent": t["impot_latent"],
+                                 "net": t["net"], "par_poche": t["groups"]},
            "risk": {k: rk[k] for k in ("portfolio_vol_pct", "risk_by_class", "stress_tests")
                     if k in rk} if rk.get("available") else None,
-           "fiscalite_latente": {"brut": t["brut"], "impot_latent": t["impot_latent"],
-                                 "net": t["net"], "taux_moyen_pct": t["taux_moyen_pct"]},
            "projection": {"terminal": proj["terminal"], "fire": proj["fire"]}}
 with st.spinner("Lecture en cours…"):
     st.markdown(advise.advise(payload, api_key=api_key or None))

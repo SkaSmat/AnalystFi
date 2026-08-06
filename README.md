@@ -17,7 +17,7 @@ s'effacent. Résultat : aucune base de données, aucun hébergement à réveille
 coût 0 €, données privées.
 
 ```
-Tableau éditable (par catégorie d'actif)
+Saisie par POCHES (Actions/PEE, Crypto…), chacune avec son taux d'impôt
   → base SQLite EN MÉMOIRE (analystfi/build.py)  — reconstruite à chaque analyse
      → moteur déterministe (engine.py) : net, allocation, concentration, frais
      → moteur de risque (risk.py) : vol, MCTR, corrélations, stress tests
