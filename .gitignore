@@ -1,5 +1,12 @@
+# Données personnelles — ne jamais committer par accident.
+patrimoine.db
+patrimoine.db-journal
+*.sqlite3
+db/import_patrimoine.sql
+db/mon_*.sql
+
 .venv/
 __pycache__/
 *.pyc
 .env
-.streamlit/secrets.toml
+.DS_Store
