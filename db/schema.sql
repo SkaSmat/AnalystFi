@@ -199,6 +199,7 @@ select
   ast.isin,
   ast.currency,
   ast.is_employer,
+  ast.is_cash,
   ast.ter_pct,
   m.quantity,
   case when m.total_bought > 0 then m.total_cost/m.total_bought end as pru,

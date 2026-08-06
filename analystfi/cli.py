@@ -1,14 +1,16 @@
 """CLI locale. Usage :
 
-    python -m analystfi.cli init       # crée patrimoine.db
-    python -m analystfi.cli seed       # charge l'exemple de vérification
-    python -m analystfi.cli check      # vérifie que v_positions sort les bons chiffres
-    python -m analystfi.cli refresh    # rafraîchit les prix (réseau)
-    python -m analystfi.cli report     # affiche le rapport d'analyse
+    python -m analystfi.cli init            # crée patrimoine.db
+    python -m analystfi.cli seed            # charge l'exemple de vérification
+    python -m analystfi.cli check           # vérifie que v_positions sort les bons chiffres
+    python -m analystfi.cli load <fichier>  # exécute un script .sql (ex: ton import)
+    python -m analystfi.cli refresh         # rafraîchit les prix (réseau)
+    python -m analystfi.cli report          # affiche le rapport d'analyse
 """
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 from . import db, engine
 
@@ -39,6 +41,21 @@ def cmd_check() -> None:
     sys.exit(0 if ok else 1)
 
 
+def cmd_load() -> None:
+    if len(sys.argv) < 3:
+        sys.exit("Usage : python -m analystfi.cli load <fichier.sql>")
+    path = Path(sys.argv[2])
+    if not path.exists():
+        sys.exit(f"Fichier introuvable : {path}")
+    conn = db.connect()
+    try:
+        conn.executescript(path.read_text(encoding="utf-8"))
+        conn.commit()
+    finally:
+        conn.close()
+    print(f"OK — {path.name} exécuté.")
+
+
 def cmd_refresh() -> None:
     from . import prices
     conn = db.connect()
@@ -58,7 +75,7 @@ def cmd_report() -> None:
 
 
 COMMANDS = {
-    "init": cmd_init, "seed": cmd_seed, "check": cmd_check,
+    "init": cmd_init, "seed": cmd_seed, "check": cmd_check, "load": cmd_load,
     "refresh": cmd_refresh, "report": cmd_report,
 }
 

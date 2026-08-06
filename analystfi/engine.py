@@ -26,7 +26,7 @@ def _pct(part: float, total: float) -> float:
 def compute_metrics(conn: sqlite3.Connection) -> dict:
     positions = db.rows(
         conn,
-        "select account_name, account_type, asset_name, isin, is_employer, ter_pct, "
+        "select account_name, account_type, asset_name, isin, is_employer, is_cash, ter_pct, "
         "quantity, pru, last_price, price_date, market_value, unrealized_pnl "
         "from v_positions order by market_value desc",
     )
@@ -84,12 +84,22 @@ def compute_metrics(conn: sqlite3.Connection) -> dict:
             ).replace(",", " "),
         })
     for p in ranked:
-        if not p["is_employer"] and p["weight_pct"] >= SEUIL_LIGNE_WARN:
+        # le cash (livret, compte courant) n'est pas un risque de concentration
+        if not p["is_employer"] and not p["is_cash"] and p["weight_pct"] >= SEUIL_LIGNE_WARN:
             alerts.append({
                 "level": "medium",
                 "code": "mono_position",
                 "message": f"{p['asset_name']} = {p['weight_pct']}% des actifs financiers (seuil {SEUIL_LIGNE_WARN}%).",
             })
+    # poche à forte volatilité (crypto) : lens de risque institutionnel
+    crypto_val = sum(b["value"] for b in allocation.get("asset_class", []) if b["bucket"] == "crypto")
+    crypto_weight = _pct(crypto_val, fin_total)
+    if crypto_weight >= 20:
+        alerts.append({
+            "level": "medium",
+            "code": "poche_crypto",
+            "message": f"Poche crypto = {crypto_weight}% des actifs financiers : sleeve à très forte volatilité, à cadrer.",
+        })
     if top5_weight >= 80 and len(ranked) > 5:
         alerts.append({
             "level": "medium",
